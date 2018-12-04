@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.4/dist/leaflet.css"
+integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
+crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.3.4/dist/leaflet.js"
+integrity="sha512-nMMmRyTVoLYqjP9hrbed9S+FzjZHW5gY1TWCHA5ckwXZBadntCNs8kEqAWdrb9O7rxbCaA4lKTIWjDXZxflOcA=="
+crossorigin=""></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<style type="text/css">
+
+#mapWrap, .credit {
+    width:100%;
+    display: block;
+    font-family: sans-serif;
+    color:#555;
+    max-width:1400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.credit {
+    line-height: 6px;
+    font-size: 12px;
+    margin-top:20px;
+    color:#888;
+}
+
+.credit a {
+    text-decoration:none;
+    color: coral;
+}
+
+#mapWrap h2 {
+    color:#111;
+}
+
+#faceMode {
+    width:80%;
+    padding:15px;
+    border:1px solid #d3d3d3;
+    border-radius:3px;
+    text-align: center;
+}
+
+#faceMode:hover {
+    border:1px solid coral;
+    cursor: pointer;
+}
+
+#map {
+    width:100%;
+    height:100%;
+}
+
+#popupContent {
+    text-align:center;
+    display: block;
+    opacity:0;
+    position: relative;
+}
+
+#closeBtn {
+    font-size: 15px;
+    padding: 10px 15px;
+    top: 2px;
+    right: 3px;
+    position: absolute;
+    display:none;
+}
+
+#closeBtn:hover {
+    cursor:pointer;
+}
+
+#popupContent span {
+    display: block;
+}
+
+#popupContent a {
+    text-decoration: none;
+    color: coral;
+}
+
+#councilPicture {
+    margin:auto;
+    display:block;
+    height:200px;
+    width:130px;
+}
+
+#councilName {
+    margin-bottom: 10px;
+}
+
+#popupContent img {
+    width:100%;
+}
+
+.label {
+    color: #888;
+    font-size:20px;
+    pointer-events: none;
+    text-align: center;
+    line-height: 20px;
+    font-family: sans-serif;
+}
+
+.labelpics img{
+    width:40px;
+}
+
+.column {
+    float: left;
+    height:600px;
+}
+
+.left {
+    width: 23%;
+    padding: 0 1%;
+}
+
+.right {
+    width: 75%;
+}
+
+
+@media (max-width:1000px) {
+    .column {
+        float:none;
+        display:block;
+    }
+
+    .left {
+        width:100%;
+        text-align:center;
+        height:180px;
+    }
+
+    .right {
+        width:100%;
+        height:400px;
+        /* margin:auto; */
+    }
+
+    #faceMode {
+        margin: auto;
+    }
+
+    #councilPicture {
+        height: 160px;
+        width: 100px;
+    }
+
+    #popupContent {
+        text-align: left;
+        position: absolute;
+        z-index: 1000;
+        top: 198px;
+        left: 8px;
+        padding:10px;
+        background:#FFF;
+        border-radius:3px;
+    }
+
+    #closeBtn {
+        display: inherit;
+    }
+
+    #popupContent h3 {
+        margin-top:0;
+    }
+
+}
+
+</style>
+</head>
+<body>
+<div id="mapWrap">
+    <div class="column left">
+        <h2>Toronto City Council Members</h2>
+        <p>The boundaries of the 25-Ward Model.</p>
+        <div id="faceMode">Face Mode</div>
+        <div id="popupContent">
+            <div id="closeBtn">X</div>
+            <h3><span id="councilWard"></span></h3>
+            <span id="councilName"></span>
+            <span id="councilPicture"></span>
+            <span id="councilLink"></span>
+        </div>
+    </div>
+    <div class="column right">
+            <div id="map"></div>
+    </div>
+</div>
+<div class="credit">
+    <p>Last update: Dec. 3, 2018</p>
+    <p>Source: City of Toronto</p>
+    <p>By: <a href="https://twitter.com/maptodotca" target="_blank">MapTO</a></p>
+</div>
+
+<script src="./js/leaflet.snogylop.js"></script>
+<script src="./js/wards.js"></script>
+<script src="./js/wardbounds.js"></script>
+<script>
+
+document.getElementById("faceMode").addEventListener("click", displayFaces);
+document.getElementById("closeBtn").addEventListener("click", function() {
+    document.getElementById("popupContent").style.opacity = 0;
+    document.getElementById("popupContent").style.pointerEvents = "none";
+});
+
+var popupOpen = false;
+var facesShown = false;
+var facesInit = false;
+var wardLabel, wardLabelPics;
+var wardLabelGroupPics = new L.LayerGroup();
+var wardLabelGroup = new L.LayerGroup();
+
+var southWest = L.latLng(43.491051, -79.698962),
+    northEast = L.latLng(43.987497, -78.982554),
+    myBounds = L.latLngBounds(southWest, northEast);
+
+var map = L.map('map', {
+    maxZoom: 18,
+    minZoom: 10,
+    zoomControl: false,
+    maxBounds: myBounds
+}).setView([43.72, -79.37], 11);
+
+L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: 'Map data © <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'}).addTo(map);
+L.Control.geocoder().addTo(map);
+L.control.zoom({
+    position:'topright'
+}).addTo(map);
+
+map.on('zoomend', function() {
+    if (map.getZoom() <= 10) {
+        map.removeLayer(wardLabelGroup);
+    } else {
+        map.addLayer(wardLabelGroup);
+    }
+});
+
+var wardLayer = L.geoJson(wards, {
+    style: function(feature) {
+        return {
+            color: '#efefef',
+            fillColor: '#d3d3d3',
+            weight:1,
+            opacity:1,
+            fillOpacity:0.9,
+            className: 'councilsvg'
+            // fill: getCouncillor(feature.properties.wardnum)
+        }
+    },
+    onEachFeature: function(feature, layer) {
+        wardLabel = L.marker(layer.getBounds().getCenter(), {
+            interactive: false,
+            icon: L.divIcon({
+                className: 'label',
+                html: '<span style="font-size:10px">Ward</span><br>' + feature.properties.wardnum,
+                iconSize: [25, 50],
+            })
+        })
+        wardLabelGroup.addLayer(wardLabel);
+
+        layer.on('mouseover', function () {
+            if (popupOpen == false) {
+                getPopupContent(this);
+            }
+        });
+        layer.on('mouseout', function () {
+            if (popupOpen == false) {
+                this.setStyle({
+                    'fillColor': '#d3d3d3',
+                    'color': '#efefef'
+                });
+            }
+        });
+        layer.on('click', function (e) {
+            console.log('e', e);
+
+            if (popupOpen == false) {
+                popupOpen = true;
+                var layer = e.target;
+                map.fitBounds(layer.getBounds());
+                getPopupContent(this);
+
+                this.setStyle({
+                    'fillOpacity': 0.15,
+                    'color': '#000'
+                });
+            } else {
+                popupOpen = false;
+                wardLayer.setStyle({
+                    fillOpacity: 0.9,
+                    color: '#efefef',
+                    fillColor: '#d3d3d3'
+                });
+            }
+
+        });
+    }
+}).addTo(map);
+
+map.addLayer(wardLabelGroup);
+
+function displayFaces() {
+
+    if (facesShown == false) {
+        document.getElementById('faceMode').innerHTML = "Label Mode";
+        facesShown = true;
+        if (facesInit == false) {
+            facesInit = true;
+            wardLayer.eachLayer(function(layer) {
+                wardLabelPics = L.marker(layer.getBounds().getCenter(), {
+                interactive: false,
+                icon: L.divIcon({
+                    className: 'labelpics',
+                    html: '<img src="' + getCouncillor(layer.feature.properties.wardnum) + '">',
+                    iconSize: [25, 50],
+                })
+                })
+                wardLabelGroupPics.addLayer(wardLabelPics);
+            })
+        }
+
+        map.addLayer(wardLabelGroupPics);
+
+    } else {
+        facesShown = false;
+        document.getElementById('faceMode').innerHTML = "Face Mode"
+        map.removeLayer(wardLabelGroupPics);
+    }
+}
+
+
+function getPopupContent(layer) {
+    document.getElementById("popupContent").style.pointerEvents = "inherit";
+    layer.setStyle({
+        'fillColor': '#ffffff',
+        'color': 'coral'
+    });
+    document.getElementById("popupContent").style.opacity = 1;
+
+    layer.bringToFront();
+    boundaryLayer.bringToFront();
+
+    var councilWard = "Ward – " + layer.feature.properties.wardnum;
+    var councilName = getCouncilName(layer.feature.properties.wardnum);
+    var councilPicture = "<img src='" + getCouncillor(layer.feature.properties.wardnum) + "'>";
+    var councilLink = "<a href='" + "https://www.toronto.ca/city-government/council/members-of-council/councillor-ward-" + layer.feature.properties.wardnum + " ' target='blank'>&#8599; Councillor Profile</a>";
+
+    document.getElementById('councilWard').innerHTML = councilWard;
+    document.getElementById('councilName').innerHTML = councilName;
+    document.getElementById('councilPicture').innerHTML = councilPicture;
+    document.getElementById('councilLink').innerHTML = councilLink;
+
+}
+
+function getCouncillor(d) {
+    console.log('d', d);
+    return d == 1 ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9046-m-ford.jpg' :
+        d == 2  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/97c0-s-holyday.jpg' :
+        d == 3  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9045-mgrimes.jpg' :
+        d == 4  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/8fdb-gperks-e1543530364480.jpg' :
+        d == 5  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/90ab-fnunziata.jpg' :
+        d == 6  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/98af-jpasternak.jpg' :
+        d == 7  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9088-aperruzza-350x350.jpg' :
+        d == 8  ? 'https://www.toronto.ca/wp-content/uploads/2018/11/99cd-Colle-e1543503695625.jpg' :
+        d == 9  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/88a5-abailao.jpg' :
+        d == 10  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/90d4-j-cressy.jpg' :
+        d == 11  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9061-mlayton.jpg' :
+        d == 12  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9808-jmatlow-e1543529592304.jpg' :
+        d == 13  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/97ae-k-wongtam.jpg' :
+        d == 14  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/90a0-pfletcher.jpg' :
+        d == 15  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/903e-jrobinson.jpg' :
+        d == 16  ? 'https://www.toronto.ca/wp-content/uploads/2017/08/8fea-d-minnanwong.jpg' :
+        d == 17  ? 'https://www.toronto.ca/wp-content/uploads/2018/11/9759-Carroll-e1542833783851.jpg' :
+        d == 18  ? 'https://www.toronto.ca/wp-content/uploads/2017/10/9629-jfilion.jpg' :
+        d == 19  ? 'https://pbs.twimg.com/profile_images/975727121749499904/aEeIHhJ5_400x400.jpg' :
+        d == 20  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/982b-g-crawford.jpg' :
+        d == 21  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9884-mthompson-e1543505251319.jpg' :
+        d == 22  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9066-j-karygiannis.jpg' :
+        d == 23  ? 'https://www.toronto.ca/wp-content/uploads/2018/11/8a93-Lai-e1543504666708.jpg' :
+        d == 24  ? 'https://www.toronto.ca/wp-content/uploads/2017/09/9846-painslie.jpg' :
+        d == 25  ? 'https://www.toronto.ca/wp-content/uploads/2018/11/8f63-McKelvie-e1542834091108.jpg' :
+                    '';
+}
+
+function getCouncilName(d) {
+    console.log('d', d);
+    return d == 1 ? 'M. Ford' :
+        d == 2  ? 'S. Holyday' :
+        d == 3  ? 'M. Grimes' :
+        d == 4  ? 'G. Perks' :
+        d == 5  ? 'F. Nunziata' :
+        d == 6  ? 'J. Pasternak' :
+        d == 7  ? 'A. Perruzza' :
+        d == 8  ? 'M. Colle' :
+        d == 9  ? 'A. Bailao' :
+        d == 10  ? 'J. Cressy' :
+        d == 11  ? 'M. Layton' :
+        d == 12  ? 'J. Matlow' :
+        d == 13  ? 'K. Wong-Tam' :
+        d == 14  ? 'P. Fletcher' :
+        d == 15  ? 'J. Robinson' :
+        d == 16  ? 'D. Minnan-Wong' :
+        d == 17  ? 'S. Carroll' :
+        d == 18  ? 'J. Filion' :
+        d == 19  ? 'B. Bradford' :
+        d == 20  ? 'G. Crawford' :
+        d == 21  ? 'M. Thompson' :
+        d == 22  ? 'J. Karygiannis' :
+        d == 23  ? 'C. Lai' :
+        d == 24  ? 'P. Ainslie ' :
+        d == 25  ? 'J. McKelvie' :
+                    '';
+}
+
+var boundaryLayer = L.geoJson(wardBounds, {
+    invert: true,
+    color: '#000',
+    fillColor: 'white',
+    opacity:1,
+    fillOpacity:1,
+    weight: 1,
+}).addTo(map);
+
+</script>
+</body>
+</html>
